@@ -50,28 +50,30 @@ rgb_generator_hidden_dims=[]
 add_name_encoder = 1
 device_id = os.environ.get('CUDA_VISIBLE_DEVICES', '0')
 
+now_date = datetime.now().strftime("%m%d%H%M%S")
 suffix_str = "_0905_test_"+str(use_for_test)+"_high_" + str(use_high_freq_data)+"_use16d_" + str(use_16d_feature) + "_weight_" + "".join(str(x) for x in setting) + "_ncf_" + str(binary_loss_weight) + "_hidden_" + "_".join(str(x) for x in rgb_generator_hidden_dims)+"_epoch_" + str(used_num_epochs) + "_device_" + str(device_id)
 # suffix_str = "_0903_test_False_high_False_use16d_False_weight_0110_ncf_0.01_hidden__device_1"
-
-if len(sys.argv) > 1:
-    binary_loss_weight = float(sys.argv[2])
-    used_num_epochs = int(sys.argv[3])
-    add_name_encoder = int(sys.argv[4])
-    os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[5]
-    device_id = os.environ.get('CUDA_VISIBLE_DEVICES', '0')
-    use_for_test = sys.argv[6].lower() == "true"
-    use_ab_data_weight = float(sys.argv[7])
-    use_high_freq_data = sys.argv[8].lower() == "true"
-    use_freezed_weight = sys.argv[9].lower() == "true"
-    now_date = datetime.now().strftime("%m%d")
-    # now_date = "0910"
-    suffix_str = f"_{now_date}_test_{use_for_test}_ncf_{binary_loss_weight}_generator_{color_distance_weight}_epoch_{used_num_epochs}_device_{device_id}_name_{add_name_encoder}_ab_{use_ab_data_weight}_high_{use_high_freq_data}_freezed_{use_freezed_weight}"
-    if not use_negtive_sample:
-        suffix_str += "_negtive_False"
-    if not use_ncf_architecture:
-        suffix_str += "_ncf_False"
-    if not use_16d_feature:
-        suffix_str += "_16d_False"
+suffix_str = f"_{now_date}"
+use_ab_data_weight = 0
+# if len(sys.argv) > 1:
+#     binary_loss_weight = float(sys.argv[2])
+#     used_num_epochs = int(sys.argv[3])
+#     add_name_encoder = int(sys.argv[4])
+#     os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[5]
+#     device_id = os.environ.get('CUDA_VISIBLE_DEVICES', '0')
+#     use_for_test = sys.argv[6].lower() == "true"
+#     use_ab_data_weight = float(sys.argv[7])
+#     use_high_freq_data = sys.argv[8].lower() == "true"
+#     use_freezed_weight = sys.argv[9].lower() == "true"
+#     now_date = datetime.now().strftime("%m%d")
+#     # now_date = "0910"
+#     suffix_str = f"_{now_date}_test_{use_for_test}_ncf_{binary_loss_weight}_generator_{color_distance_weight}_epoch_{used_num_epochs}_device_{device_id}_name_{add_name_encoder}_ab_{use_ab_data_weight}_high_{use_high_freq_data}_freezed_{use_freezed_weight}"
+#     if not use_negtive_sample:
+#         suffix_str += "_negtive_False"
+#     if not use_ncf_architecture:
+#         suffix_str += "_ncf_False"
+#     if not use_16d_feature:
+#         suffix_str += "_16d_False"
 
 # 配置日志记录
 # 检查是否为评估模式
@@ -147,7 +149,7 @@ except Exception as e:
 # -------------------------
 # 1. 数据预处理
 # -------------------------
-def preprocess_data(csv_path='responses_cleaned.csv', min_count=10):
+def preprocess_data(csv_path='responses.csv', min_count=10):
     """
     预处理颜色名称数据
     
@@ -241,14 +243,12 @@ class NCFModel(nn.Module):
         self.emb_dim = emb_dim
         
         fusion_input_dim = emb_dim * 2
-        # 融合后的MLP：128维 -> 128维 -> 1维（0-1分数）
         self.fusion_mlp = nn.Sequential(
-            nn.Linear(fusion_input_dim, 128),  # 128维隐藏层
+            nn.Linear(fusion_input_dim, 256),  
             nn.ReLU(),
-            nn.Linear(128, 256),  
+            nn.Linear(256, 128),  
             nn.ReLU(),
-            # nn.Dropout(ncf_dropout_rate),
-            nn.Linear(256, 1),  # 输出1维分数
+            nn.Linear(128, 1),  # 输出1维分数
             nn.Sigmoid()  # 确保输出在0-1之间
         )
     
@@ -1866,7 +1866,6 @@ def main():
     term_color_mapping = load_xkcd_color_mapping()
     logger.info(f"term_color_mapping including {len(term_color_mapping)} terms")
 
-
     # 将每个rgb_value转换为hsl、lab、hcl、cmyk，并将所有格式拼接为16维特征，替换原有rgb_values
     # 生成16维新特征
     if use_16d_feature:
@@ -1887,7 +1886,7 @@ def main():
             'unique_terms': unique_terms,
             'unique_colors': unique_colors
         }, f)
-    return
+
     # 划分训练集和测试集
     used_test_size = 10100 / len(rgb_values)
     logger.info(f"used_test_size: {used_test_size}")
@@ -1906,21 +1905,6 @@ def main():
         X_train = X_train_full
         y_train = y_train_full
 
-    # # 按照颜色名称的频次从低到高排序，前10000为测试集，其余为训练集
-    # # 统计每个颜色名称的出现次数
-    # name_freq = Counter(encoded_labels)
-    # # 为每个样本分配其对应的频次
-    # sample_freq = np.array([name_freq[label] for label in encoded_labels])
-    # # 获取频次从低到高的排序索引
-    # sorted_indices = np.argsort(sample_freq)
-    # # 前10000个为测试集，其余为训练集
-    # test_indices = sorted_indices[:10000]
-    # train_indices = sorted_indices[10000:]
-
-    # X_test = rgb_values[test_indices]
-    # y_test = encoded_labels[test_indices]
-    # X_train = rgb_values[train_indices]
-    # y_train = encoded_labels[train_indices]
     logger.info(f"训练集样本数: {len(X_train)}, 测试集样本数: {len(X_test)}")
 
     # 统计y_train中出现的颜色名称及其出现次数
@@ -2085,30 +2069,10 @@ def compute_topk_accuracy(rgb_encoder, name_encoder, ncf_model, X_test, y_test, 
             # 分批次计算名称嵌入和相似度，直接累积topk结果
             for i in range(0, len(unique_terms_list), name_batch_size):
                 batch_names = unique_terms_list[i:i+name_batch_size]
-                # batch_names = ['aaaaaa eyes']*name_batch_size
                 batch_embs = name_encoder.encode_batch(batch_names)
                 
-                # logger.info('batch_names:', batch_names)
                 batch_embs = batch_embs.to(device)
-                # logger.info('batch_embs:',batch_embs)
-                # name_embding1 = name_encoder.encode_batch(batch_names[:1]).detach().cpu().numpy()
-                # logger.info(f"{batch_names[:1]}, 前1个name_emb: [{name_embding1}]")
-                # name_embding3 = name_encoder.encode_batch(batch_names[:10]).detach().cpu().numpy()
-                # logger.info(f"{batch_names[:3]}, 前3个name_emb: [{name_embding3}]")
-                # name_embding5 = name_encoder.encode_batch(batch_names[:15]).detach().cpu().numpy()
-                # logger.info(f"{batch_names[:5]}, 前5个name_emb: [{name_embding5}]")
-                # diff = np.abs(name_embding1[0] - name_embding3[0])
-                # logger.info(f"差异统计:")
-                # logger.info(f"  最大差异: {np.max(diff):.8f}")
-                # logger.info(f"  平均差异: {np.mean(diff):.8f}")
-                # logger.info(f"  差异标准差: {np.std(diff):.8f}")
-                # diff = np.abs(name_embding1[0] - name_embding5[0])
-                # logger.info(f"差异统计:")
-                # logger.info(f"  最大差异: {np.max(diff):.8f}")
-                # logger.info(f"  平均差异: {np.mean(diff):.8f}")
-                # logger.info(f"  差异标准差: {np.std(diff):.8f}")
-                # return
-
+               
                 # 计算当前批次与所有RGB样本的相似度
                 if ncf_model is not None:
                     # NCF模型推理
@@ -2117,73 +2081,7 @@ def compute_topk_accuracy(rgb_encoder, name_encoder, ncf_model, X_test, y_test, 
                         rgb_emb = rgb_embs[j].unsqueeze(0).repeat(len(batch_embs), 1)
                         out = ncf_model(rgb_emb, batch_embs)
                         batch_scores.append(out.squeeze().cpu().numpy())
-                        # logger.info('X_test_tensor:',X_test_tensor[j])
-                        # logger.info('rgb_emb:',rgb_emb)
-                        # logger.info('out:',out)
-                        # logger.info(f"{batch_names[0]}, 第一个name_emb: [{batch_embs[0]}]")
-                        # logger.info('-----------------')
-                        # name_embding = name_encoder.encode_batch([batch_names[0]]).detach().cpu().numpy()
-                        # logger.info(f"{batch_names[0]}, 第一个name_emb: [{name_embding[0]}]")
-                        # diff = np.abs(batch_embs[0].detach().cpu().numpy() - name_embding[0])
-                        # logger.info(f"差异统计:")
-                        # logger.info(f"  最大差异: {np.max(diff):.8f}")
-                        # logger.info(f"  平均差异: {np.mean(diff):.8f}")
-                        # logger.info(f"  差异标准差: {np.std(diff):.8f}")
-                        # return
-                        # 输出得分最低的rgb_emb和name embd，以及所对应的name
-                        # output_sign = True
-                        # if output_sign:
-                        #     # logger.info(f"Score range: [{out.min().item():.4f}, {out.max().item():.4f}]")
-                        #     # logger.info(f"Mean score: {out.mean().item():.4f}")
-                        #     min_score = out.min().item()
-                        #     min_idx = out.argmin().item()
-                        #     min_rgb_emb = rgb_emb[0].detach().cpu().numpy()
-                        #     min_name_emb = batch_embs[min_idx].detach().cpu().numpy()
-                        #     min_name = batch_names[min_idx]
-                        #     # if min_name == 'alien goo green':
-                        #     # 输出成带逗号的数组
-                        #     rgb_emb_str = ', '.join([f"{x:.8f}" for x in min_rgb_emb])
-                        #     orin_rgb_str = ', '.join([f"{x:.8f}" for x in X_test[j]])
-                        #     name_emb_str = ', '.join([f"{x:.8f}" for x in min_name_emb])
-                        #     # if min_score<0.01:
-                        #     #     return
-                        #     if min_name == 'aaaaaa eyes':
-                        #         logger.info(f"最低分: {min_score:.4f}，\n对应的name: {min_name}")
-                        #         logger.info(f"最低分对应的rgb_emb: [{rgb_emb_str}], \n原始rgb: [{orin_rgb_str}]")
-                        #         logger.info(f"id: {min_idx}, 最低分对应的name_emb: [{name_emb_str}], \n原始name: {min_name}")
-                        #         # 确保所有张量在同一设备上
-                        #         name_embding = name_encoder.encode_batch([min_name]).detach().cpu().numpy()
-                        #         logger.info('-----------------')
-                        #         logger.info(f"计算最低分对应的name_emb: [{name_embding}]")
-                        #         logger.info('-----------------')
-                        #         # 计算差异
-                        #         diff = np.abs(name_embding - min_name_emb)
-                        #         logger.info(f"差异统计:")
-                        #         logger.info(f"  最大差异: {np.max(diff):.8f}")
-                        #         logger.info(f"  平均差异: {np.mean(diff):.8f}")
-                        #         logger.info(f"  差异标准差: {np.std(diff):.8f}")
-                                
-                        #         # 检查是否在可接受范围内
-                        #         if np.max(diff) < 1e-6:
-                        #             logger.info("✅ 差异在可接受范围内（< 1e-6）")
-                        #         else:
-                        #             logger.info("⚠️ 差异较大，可能存在计算不一致")
-
-                        #             # 使用相同的批次大小重新计算
-                        #         test_batch = [min_name] + ['dummy'] * (name_batch_size - 1)  # 填充到相同批次大小
-                        #         test_embs = name_encoder.encode_batch(test_batch)
-                        #         test_name_emb = test_embs[0].detach().cpu().numpy()
-                        #         logger.info(f"test_name_emb: [{test_name_emb}]")
-                        #         diff = np.abs(test_name_emb - min_name_emb)
-                        #         logger.info(f"差异统计:")
-                        #         logger.info(f"  最大差异: {np.max(diff):.8f}")
-                        #         logger.info(f"  平均差异: {np.mean(diff):.8f}")
-                        #         logger.info(f"  差异标准差: {np.std(diff):.8f}")
-                        #         logger.info(batch_names)
-                        #         logger.info(batch_embs)
-                        #         return
-
-                        #     output_sign = False
+                        
                     batch_similarity = np.stack(batch_scores, axis=0)
                 else:
                     # 普通模型推理：计算余弦相似度
@@ -2303,7 +2201,7 @@ def compute_topk_accuracy(rgb_encoder, name_encoder, ncf_model, X_test, y_test, 
 
 def compute_name2color_accuracy_simple(rgb_encoder, name_encoder, ncf_model, X_test, y_test, unique_terms, unique_colors, top_k=5):
     """
-    计算名称到颜色的推荐准确率（简化版本，不做计算优化）
+    计算名称到颜色的推荐准确率
     直接全部一块计算，不使用分批处理
     
     Args:
@@ -2489,361 +2387,6 @@ def compute_name2color_accuracy_simple(rgb_encoder, name_encoder, ncf_model, X_t
         'cielab_distance_std': np.std(valid_cielab_dists),
         'cielab_distance_sum': np.sum(valid_cielab_dists)
     }
-    
-    return results
-
-def compute_name2color_accuracy_old(rgb_encoder, name_encoder, ncf_model, X_test, y_test, unique_terms, unique_colors, top_k=5, topk_list=[1,5,10,20,30, 50, 100, 200]):
-    """
-    计算名称到颜色的推荐准确率（Name-to-Color Accuracy）
-    参考text2color_lstm_pytorch.py中的eval_cielab_distance评估方法
-    
-    Args:
-        rgb_encoder: RGB编码器
-        name_encoder: 名称编码器
-        ncf_model: NCF模型（可选）
-        X_test: 测试集RGB值
-        y_test: 测试集标签
-        unique_terms: 唯一颜色名称列表
-        unique_colors: 唯一颜色值列表
-        top_k: 主要推荐数量（用于计算主要指标）
-        topk_list: 要计算的top-k准确率列表，如[1,3,5,10]
-    
-    Returns:
-        results: 包含准确率统计的字典
-    """
-    logger.info(f"=== 计算名称到颜色推荐准确率 ===")
-    
-    rgb_encoder.eval()
-    name_encoder.eval()
-    if ncf_model is not None:
-        ncf_model.eval()
-    
-    device = next(rgb_encoder.parameters()).device
-    logger.info(f"使用设备: {device}")
-    
-    # 确保unique_terms是列表格式
-    if isinstance(unique_terms, np.ndarray):
-        unique_terms_list = unique_terms.tolist()
-    else:
-        unique_terms_list = list(unique_terms)
-    
-    # 初始化统计变量
-    total_samples = len(X_test)
-    cielab_distances = []
-    cielab_distances_mean = []
-    correct_predictions = 0
-    total_predictions = 0
-    
-    # 初始化多topk统计
-    max_topk = max(topk_list) if topk_list else top_k
-    topk_correct_counts = {k: 0 for k in topk_list}
-    topk_cielab_distances = {k: [] for k in topk_list}
-    topk_cielab_distances_mean = {k: [] for k in topk_list}
-    
-    logger.info(f"开始评估 {total_samples} 个样本...")
-    logger.info(f"unique_colors包含 {len(unique_colors)} 个不同的RGB值")
-    
-    # 🚀 优化1: 预计算所有RGB的embedding，避免重复计算
-    logger.info("🔄 预计算所有RGB的embedding...")
-    start_time = time.time()
-    
-    # 将unique_colors转换为numpy数组并移到设备上
-    if isinstance(unique_colors[0], tuple):
-        unique_colors_array = np.array(unique_colors, dtype=np.float32)
-    else:
-        unique_colors_array = np.array(unique_colors, dtype=np.float32)
-    
-    # 分批次计算RGB embedding，避免显存溢出
-    rgb_batch_size = 100000  # 根据显存调整
-    all_rgb_embeddings = []
-    
-    for i in range(0, len(unique_colors_array), rgb_batch_size):
-        start_idx = i
-        end_idx = min(start_idx + rgb_batch_size, len(unique_colors_array))
-        batch_colors = unique_colors_array[start_idx:end_idx]
-        # 根据use_16d_feature设置处理RGB特征
-        batch_features = []
-        for rgb in batch_colors:
-            if use_16d_feature:
-                # 使用16维特征
-                if len(rgb) == 3:
-                    feature = rgb_to_16d_feature(rgb)
-                elif len(rgb) == 16:
-                    feature = rgb
-                else:
-                    logger.info(f"警告: 意外的RGB维度 {len(rgb)}，使用简单填充")
-                    feature = list(rgb[:3]) + [0.0] * 13
-            else:
-                # 使用3维RGB特征
-                if len(rgb) >= 3:
-                    feature = rgb[:3]  # 只取前3维
-                else:
-                    logger.info(f"警告: RGB维度不足 {len(rgb)}，使用零填充")
-                    feature = list(rgb) + [0.0] * (3 - len(rgb))
-            
-            batch_features.append(feature)
-        batch_features = np.array(batch_features, dtype=np.float32)
-        # logger.info(f"first 5 samples of batch_features: {batch_features[:5]}")
-        # 转换为特征张量
-        batch_tensor = torch.tensor(batch_features, dtype=torch.float32, device=device)
-    
-        with torch.no_grad():
-            batch_embeddings = rgb_encoder(batch_tensor)
-            all_rgb_embeddings.append(batch_embeddings.cpu())
-        
-        if (i // rgb_batch_size + 1) % 10 == 0:
-            logger.info(f"  RGB embedding进度: {i + rgb_batch_size}/{len(unique_colors_array)}")
-    
-    all_rgb_embeddings = torch.cat(all_rgb_embeddings, dim=0).to(device)
-    logger.info(f"✅ RGB embedding预计算完成，形状: {all_rgb_embeddings.shape}")
-    logger.info(f"⏱️ RGB embedding预计算耗时: {time.time() - start_time:.2f}秒")
-    
-    # 🚀 优化2: 只预计算y_test中出现的颜色名称的embedding
-    logger.info("🔄 只预计算y_test中出现的颜色名称的embedding...")
-    start_time = time.time()
-    
-    # 获取y_test中出现的唯一颜色名称索引
-    unique_test_indices = np.unique(y_test)
-    unique_test_names = [unique_terms_list[idx] for idx in unique_test_indices]
-    logger.info(f"y_test中包含 {len(unique_test_indices)} 个唯一的颜色名称索引")
-    logger.info(f"实际需要编码的颜色名称数量: {len(unique_test_names)}")
-    logger.info(unique_test_indices)
-    
-    name_batch_size = min(10000, len(unique_test_names))
-    all_name_embeddings = []
-    
-    for i in range(0, len(unique_test_names), name_batch_size):
-        start_idx = i
-        end_idx = min(start_idx + name_batch_size, len(unique_test_names))
-        batch_names = unique_test_names[start_idx:end_idx]
-        with torch.no_grad():
-            batch_embeddings = name_encoder.encode_batch(batch_names)
-            all_name_embeddings.append(batch_embeddings.cpu())
-        
-        if (i // name_batch_size + 1) % 20 == 0:
-            logger.info(f"  名称embedding进度: {i + name_batch_size}/{len(unique_test_names)}")
-    
-    all_name_embeddings = torch.cat(all_name_embeddings, dim=0).to(device)
-    logger.info(f"✅ 名称embedding预计算完成，形状: {all_name_embeddings.shape}")
-    logger.info(f"⏱️ 名称embedding预计算耗时: {time.time() - start_time:.2f}秒")
-    
-    # 🚀 优化3: 使用分块计算避免大矩阵内存爆炸
-    logger.info("🔄 开始分块评估，避免内存不足...")
-    start_time = time.time()
-    
-    rgb_chunk_size = 100000  # 每次处理10万个RGB
-    
-    logger.info(f"测试样本数量: {total_samples}, RGB分块大小: {rgb_chunk_size}")
-    n_rgb_chunks = (len(unique_colors_array) + rgb_chunk_size - 1) // rgb_chunk_size
-    logger.info(f"RGB分块数量: {n_rgb_chunks}")
-    
-    # 创建索引映射：从原始索引到新索引
-    index_mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_test_indices)}
-
-    # 对每个测试样本进行处理
-    for i in range(len(X_test)):
-        # 获取当前样本的真实颜色名称
-        true_name_idx = y_test[i]
-        true_name = unique_terms_list[true_name_idx]
-        # 获取名称embedding
-        name_emb = all_name_embeddings[index_mapping[true_name_idx]:index_mapping[true_name_idx]+1]  # (1, emb_dim)
-        # 获取当前样本的真实RGB值
-        true_rgb = X_test[i][:3]  # 取前3维作为RGB
-
-        # 为当前样本维护top-k结果（使用最大的topk值）
-        sample_top_k_values = torch.full((max_topk,), float('-inf'), device=device)
-        sample_top_k_indices = torch.zeros((max_topk,), dtype=torch.long, device=device)
-        
-        # 分块处理RGB，避免大矩阵
-        with torch.no_grad():
-            for rgb_chunk_idx in range(n_rgb_chunks):
-                rgb_start = rgb_chunk_idx * rgb_chunk_size
-                rgb_end = min(rgb_start + rgb_chunk_size, len(unique_colors_array))
-                
-                # 获取当前RGB块的embedding
-                rgb_chunk_embeddings = all_rgb_embeddings[rgb_start:rgb_end]
-                
-                # 计算当前样本与当前RGB块的相似度
-                if ncf_model is not None:
-                    # 使用NCF模型计算相似度
-                    name_emb_expanded = name_emb.repeat(len(rgb_chunk_embeddings), 1)
-                    chunk_scores = ncf_model(rgb_chunk_embeddings, name_emb_expanded)
-                    chunk_similarity = chunk_scores.squeeze()
-                else:
-                    # 使用余弦相似度
-                    chunk_similarity = F.cosine_similarity(name_emb, rgb_chunk_embeddings, dim=1)
-                
-                # 更新当前样本的top-k结果
-                # 获取当前chunk中的top-k
-                chunk_values, chunk_indices = torch.topk(chunk_similarity, k=min(max_topk, chunk_similarity.size(0)))
-                
-                # 与全局top-k比较，保留最大的
-                combined_values = torch.cat([sample_top_k_values, chunk_values])
-                combined_indices = torch.cat([sample_top_k_indices, chunk_indices + rgb_start])
-                
-                # 找到全局top-k
-                global_top_k_values, global_top_k_indices = torch.topk(combined_values, k=max_topk)
-                sample_top_k_values = global_top_k_values
-                sample_top_k_indices = combined_indices[global_top_k_indices]
-                
-                # 清理当前chunk的显存
-                del chunk_similarity, rgb_chunk_embeddings
-                if ncf_model is not None:
-                    del name_emb_expanded, chunk_scores
-                torch.cuda.empty_cache()
-        
-        # 获取推荐的RGB值并计算准确率
-        recommended_indices = sample_top_k_indices.cpu().numpy()
-        
-        # 获取真实LAB值
-        true_lab = rgb_to_lab(true_rgb)
-        
-        # 计算所有推荐RGB的LAB值
-        pred_rgbs = unique_colors_array[recommended_indices][:, :3]
-        pred_labs = np.array([rgb_to_lab(rgb) for rgb in pred_rgbs])
-        lab_dists = np.sqrt(np.sum((pred_labs - true_lab) ** 2, axis=1))
-        
-        # 为每个topk计算准确率和CIELAB距离
-        for k in topk_list:
-            if k <= len(recommended_indices):
-                # 检查真实RGB是否在top-k推荐中
-                true_rgb_found = False
-                for idx in recommended_indices[:k]:
-                    recommended_rgb = unique_colors_array[idx][:3]
-                    # 使用欧几里得距离判断RGB是否匹配
-                    rgb_distance = np.sqrt(np.sum((true_rgb - recommended_rgb) ** 2))
-                    if rgb_distance < 0.01:  # 阈值可调整
-                        true_rgb_found = True
-                        break
-                
-                # 统计准确率
-                if true_rgb_found:
-                    topk_correct_counts[k] += 1
-                
-                # 计算CIELAB距离（使用top-k中的最小距离）
-                min_lab_dist = np.min(lab_dists[:k])
-                topk_cielab_distances[k].append(min_lab_dist)
-                mean_lab_dist = np.mean(lab_dists[:k])
-                topk_cielab_distances_mean[k].append(mean_lab_dist)
-        
-        # # 输出前top10个推荐颜色的RGB和对应LAB值
-        # true_rgb_255 = (true_rgb * 255).astype(int)
-        # logger.info(f"前top50个推荐颜色的RGB和LAB值 for sample：RGB={true_rgb_255}, LAB={true_lab}")
-        # for rank, idx in enumerate(recommended_indices[:50]):
-        #     rgb = unique_colors_array[idx][:3]
-        #     lab = rgb_to_lab(rgb)
-        #     rgb_255 = (rgb * 255).astype(int)
-        #     logger.info(f"  Top{rank+1}: RGB={rgb_255}, LAB={lab}")
-        # logger.info('-----------------')
-        # return
-        
-        # 主要指标使用top_k
-        if top_k <= len(recommended_indices):
-            # 检查真实RGB是否在主要top-k推荐中
-            true_rgb_found = False
-            for idx in recommended_indices[:top_k]:
-                recommended_rgb = unique_colors_array[idx][:3]
-                rgb_distance = np.sqrt(np.sum((true_rgb - recommended_rgb) ** 2))
-                if rgb_distance < 0.01:
-                    true_rgb_found = True
-                    break
-            
-            # 统计主要准确率
-            if true_rgb_found:
-                correct_predictions += 1
-            total_predictions += 1
-            
-            # 计算主要CIELAB距离
-            min_lab_dist = np.min(lab_dists[:top_k])
-            cielab_distances.append(min_lab_dist)
-            
-            # 计算平均RGB的CIELAB距离
-            pred_rgb = np.mean(pred_rgbs[:top_k], axis=0)
-            pred_lab = rgb_to_lab(pred_rgb)
-            cielab_dist_mean = np.sqrt(np.sum((np.array(pred_lab) - np.array(true_lab))**2))
-            cielab_distances_mean.append(cielab_dist_mean)
-        
-        # 显示进度
-        if (i + 1) % 1000 == 0:
-            logger.info(f"  进度: {i + 1}/{total_samples}, 当前准确率: {correct_predictions/total_predictions:.4f}")
-    
-    logger.info(f"✅ 分块评估完成，耗时: {time.time() - start_time:.2f}秒")
-    
-    # 过滤掉无效的CIELAB距离
-    valid_cielab_dists = [d for d in cielab_distances if d != float('inf')]
-    valid_cielab_dists_mean = [d for d in cielab_distances_mean if d != float('inf')]
-    
-    # 计算主要准确率
-    accuracy = correct_predictions / total_predictions if total_predictions > 0 else 0
-    
-    # 计算多topk准确率
-    topk_accuracies = {}
-    for k in topk_list:
-        topk_accuracies[f'top_{k}_accuracy'] = topk_correct_counts[k] / total_samples if total_samples > 0 else 0
-    
-    # 计算多topk CIELAB距离统计
-    topk_cielab_stats = {}
-    for k in topk_list:
-        valid_dists = [d for d in topk_cielab_distances[k] if d != float('inf') and not np.isnan(d)]
-        valid_dists_mean = [d for d in topk_cielab_distances_mean[k] if d != float('inf') and not np.isnan(d)]
-        if valid_dists:
-            topk_cielab_stats[f'top_{k}_cielab_mean'] = np.mean(valid_dists)
-            topk_cielab_stats[f'top_{k}_cielab_std'] = np.std(valid_dists)
-            topk_cielab_stats[f'top_{k}_cielab_mean_mean'] = np.mean(valid_dists_mean)
-            topk_cielab_stats[f'top_{k}_cielab_std_mean'] = np.std(valid_dists_mean)
-        else:
-            topk_cielab_stats[f'top_{k}_cielab_mean'] = float('inf')
-            topk_cielab_stats[f'top_{k}_cielab_std'] = 0.0
-            topk_cielab_stats[f'top_{k}_cielab_mean_mean'] = float('inf')
-            topk_cielab_stats[f'top_{k}_cielab_std_mean'] = 0.0
-
-    results = {
-        'total_samples': total_samples,
-        'correct_predictions': correct_predictions,
-        f'top_{top_k}_accuracy': accuracy,
-        'accuracy': accuracy,
-        'accuracy_percentage': accuracy * 100,
-        'cielab_distance_mean': np.mean(valid_cielab_dists) if valid_cielab_dists else float('inf'),
-        'cielab_distance_std': np.std(valid_cielab_dists) if valid_cielab_dists else 0.0,
-        'cielab_distance_mean_mean': np.mean(valid_cielab_dists_mean) if valid_cielab_dists_mean else float('inf'),
-        'cielab_distance_mean_std': np.std(valid_cielab_dists_mean) if valid_cielab_dists_mean else 0.0,
-        **topk_accuracies,
-        **topk_cielab_stats
-    }
-    
-    # 打印结果
-    logger.info(f"\n=== 名称到颜色推荐准确率结果 ===")
-    logger.info(f"总样本数: {total_samples}")
-    logger.info(f"正确预测数: {correct_predictions}")
-    logger.info(f"Top-{top_k} 准确率: {accuracy:.4f} ({accuracy*100:.2f}%)")
-    
-    # 打印多topk准确率
-    logger.info(f"\n=== 多Top-K准确率 ===")
-    for k in topk_list:
-        acc = topk_accuracies[f'top_{k}_accuracy']
-        logger.info(f"Top-{k} 准确率: {acc:.4f} ({acc*100:.2f}%)")
-    
-    # 打印多topk CIELAB距离
-    logger.info(f"\n=== 多Top-K CIELAB距离统计 ===")
-    for k in topk_list:
-        mean_dist = topk_cielab_stats[f'top_{k}_cielab_mean']
-        std_dist = topk_cielab_stats[f'top_{k}_cielab_std']
-        mean_dist_mean = topk_cielab_stats[f'top_{k}_cielab_mean_mean']
-        std_dist_mean = topk_cielab_stats[f'top_{k}_cielab_std_mean']
-        if mean_dist != float('inf') and mean_dist_mean != float('inf'):
-            logger.info(f"Top-{k} CIELAB min距离 - 平均: {mean_dist:.4f}, 标准差: {std_dist:.4f}")
-            logger.info(f"Top-{k} CIELAB avg距离 - 平均: {mean_dist_mean:.4f}, 标准差: {std_dist_mean:.4f}")
-        else:
-            logger.info(f"Top-{k} CIELAB距离 - 无有效数据")
-    
-    logger.info(f"\n=== 主要指标 Top-{top_k} ===")
-    logger.info(f"CIELAB最小距离 - 平均: {results['cielab_distance_mean']:.4f}, 标准差: {results['cielab_distance_std']:.4f}")
-    logger.info(f"CIELAB平均距离 - 平均: {results['cielab_distance_mean_mean']:.4f}, 标准差: {results['cielab_distance_mean_std']:.4f}")
-    
-    # 🚀 优化5: 清理GPU内存
-    logger.info("🧹 清理GPU内存...")
-    del all_rgb_embeddings, all_name_embeddings
-    torch.cuda.empty_cache()
     
     return results
 
