@@ -161,6 +161,87 @@ After training, the following files will be generated:
 3. The data file should contain sufficient number of samples (recommend at least 100,000 samples)
 4. You can adjust batch size and number of training epochs according to actual conditions
 
+### Web Application
+
+The project includes a web interface for interactive color-name translation. The web application provides a user-friendly interface for:
+
+- **Color-to-Name Prediction**: Select a color (via color picker or RGB input) and get top-10 recommended color names with confidence scores
+- **Name-to-Color Generation**: Enter a color name and generate corresponding RGB color values
+- **Color Recommendations**: Get multiple color recommendations based on a color name
+
+#### Starting the Web Application
+
+1. **Navigate to the website directory**:
+```bash
+cd website
+```
+
+2. **Activate the virtual environment** (if not already activated):
+```bash
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate  # Windows
+```
+
+3. **Start the web server**:
+
+**Using GPU (default)**:
+```bash
+python web_app.py --device gpu --port 5000
+```
+
+**Using CPU**:
+```bash
+python web_app.py --device cpu --port 5000
+```
+
+**Running in Background (Linux/Mac)**:
+```bash
+nohup python web_app.py --device cpu --port 5000 &
+```
+
+**Running in Background (Windows PowerShell)**:
+```powershell
+Start-Process python -ArgumentList "web_app.py", "--device", "cpu", "--port", "5000" -NoNewWindow
+```
+
+4. **Access the web interface**: Open your browser and navigate to `http://localhost:5000`
+
+#### Web Application Features
+
+- **Color Picker**: Interactive color picker for visual color selection
+- **RGB Input**: Manual RGB value input (supports formats: `255,215,123` or `255 215 123`)
+- **Real-time Prediction**: Instant color name predictions with confidence scores
+- **Color Generation**: Generate RGB colors from color names
+- **Top-K Recommendations**: Get top-10 recommendations for both color-to-name and name-to-color tasks
+
+#### Web Application Requirements
+
+- The web application requires a trained model. Make sure you have:
+  - A trained model file in `website/models/` directory (e.g., `model_best_*.pt`)
+  - Pre-trained BERT model in `website/models-pretrained/bert-base-uncased/` directory
+  - Preprocessed data file `website/models/preprocessed_data.pkl` (optional, will be generated if missing)
+
+- The first startup may take some time to:
+  - Load the model weights
+  - Precompute embeddings for faster inference
+  - Initialize the pre-trained transformer model
+
+#### API Endpoints
+
+The web application provides the following REST API endpoints:
+
+- `GET /`: Main web interface
+- `POST /predict_color_name`: Predict color names from RGB values
+  - Request body: `{"r": 255, "g": 0, "b": 0}`
+  - Response: `{"success": true, "results": [{"name": "red", "score": 0.95}, ...]}`
+- `POST /generate_quick_color`: Generate RGB color from color name
+  - Request body: `{"color_name": "red"}`
+  - Response: `{"success": true, "result": {"rgb": [255, 0, 0], "hex": "#ff0000", ...}}`
+- `POST /recommend_colors`: Get color recommendations from color name
+  - Request body: `{"color_name": "red"}`
+  - Response: `{"success": true, "results": [{"rgb": [255, 0, 0], "hex": "#ff0000", ...}, ...]}`
+
 ## Citation
 
 If you use this code, please cite the related paper:
